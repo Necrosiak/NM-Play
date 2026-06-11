@@ -676,10 +676,9 @@ class NMPlay(tk.Tk):
             self._device_rows.append((row, lbl_name, lbl_ip))
 
     def _guess_platform(self, console_type: str) -> str:
-        """Guess platform ID from console type string"""
         ct = console_type.lower()
         if "switch" in ct: return "switch"
-        if "ps5" in ct: return "ps3"  # PS5 uses PS3 protocol for now
+        if "ps5" in ct: return "ps3"
         if "ps4" in ct: return "ps3"
         if "ps3" in ct: return "ps3"
         if "ps2" in ct: return "ps2"

@@ -1,6 +1,7 @@
-﻿"""
+"""
 NM-Play — Network Scanner
 Detects consoles and emulators on the local network via MAC address OUI lookup.
+"Reviving the past, connecting the present." — NerdHz & Nekyron / NetworkMemories
 """
 
 import socket
@@ -8,70 +9,77 @@ import subprocess
 import platform
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
-# MAC OUI prefixes by manufacturer/console
+# MAC OUI -> console type direct mapping
 OUI_MAP = {
-    # Nintendo
-    "00:09:BF": "Nintendo",
-    "00:17:AB": "Nintendo",
-    "00:19:1D": "Nintendo",
-    "00:1A:E9": "Nintendo",
-    "00:1B:EA": "Nintendo",
-    "00:1F:C5": "Nintendo",
-    "00:21:47": "Nintendo",
-    "00:22:D7": "Nintendo",
-    "00:24:44": "Nintendo",
-    "34:AF:2C": "Nintendo",
-    "40:F4:07": "Nintendo",
-    "58:BD:A3": "Nintendo",
-    "7C:BB:8A": "Nintendo",
-    "8C:56:C5": "Nintendo",
-    "98:B6:E9": "Nintendo",
-    "A4:C0:E1": "Nintendo",
-    "B8:AE:6E": "Nintendo",
-    "CC:FB:65": "Nintendo",
-    "E0:E7:51": "Nintendo",
-    # Sony PlayStation
-    "00:13:A9": "Sony",
-    "00:1D:0D": "Sony",
-    "00:24:BE": "Sony",
-    "00:D9:D1": "Sony",
-    "28:0D:FC": "Sony",
-    "40:49:0F": "Sony",
-    "70:9E:29": "Sony",
-    "AC:9B:0A": "Sony",
-    "BC:60:A7": "Sony",
-    "F8:46:1C": "Sony",
-    # Microsoft Xbox
-    "00:50:F2": "Microsoft",
-    "28:18:78": "Microsoft",
-    "60:45:CB": "Microsoft",
-    "7C:1E:52": "Microsoft",
-    "98:5F:D3": "Microsoft",
-    "C8:3D:D4": "Microsoft",
+    # Nintendo Switch / Switch 2
+    "00:09:BF": "Nintendo Switch", "00:17:AB": "Nintendo Switch",
+    "00:19:1D": "Nintendo Switch", "00:1A:E9": "Nintendo Switch",
+    "00:1B:EA": "Nintendo Switch", "00:1F:C5": "Nintendo Switch",
+    "00:21:47": "Nintendo Switch", "00:22:D7": "Nintendo Switch",
+    "00:24:44": "Nintendo Switch", "34:AF:2C": "Nintendo Switch",
+    "40:F4:07": "Nintendo Switch", "58:BD:A3": "Nintendo Switch",
+    "7C:BB:8A": "Nintendo Switch", "8C:56:C5": "Nintendo Switch",
+    "98:B6:E9": "Nintendo Switch", "A4:C0:E1": "Nintendo Switch",
+    "B8:AE:6E": "Nintendo Switch", "CC:FB:65": "Nintendo Switch",
+    "E0:E7:51": "Nintendo Switch",
+    # Sony PS2
+    "00:04:1F": "PS2", "00:13:15": "PS2", "00:19:C5": "PS2",
+    "00:1F:A7": "PS2", "04:F7:78": "PS2", "0C:FE:45": "PS2",
+    "28:40:DD": "PS2", "70:9E:29": "PS2", "78:C8:81": "PS2",
+    "F8:46:1C": "PS2",
+    # Sony PS3
+    "00:1D:0D": "PS3", "00:24:8D": "PS3", "00:D9:D1": "PS3",
+    "28:0D:FC": "PS3", "2C:9E:00": "PS3", "2C:CC:44": "PS3",
+    "70:66:2A": "PS3", "BC:33:29": "PS3", "BC:60:A7": "PS3",
+    "C8:4A:A0": "PS3", "C8:63:F1": "PS3", "F4:64:12": "PS3",
+    "00:13:A9": "PS3", "00:24:BE": "PS3", "AC:9B:0A": "PS3",
+    # Sony PS4
+    "00:15:C1": "PS4", "00:E4:21": "PS4", "0C:70:43": "PS4",
+    "50:B0:3B": "PS4", "5C:96:66": "PS4", "60:5B:B4": "PS4",
+    "68:28:6C": "PS4", "84:E6:57": "PS4", "A8:E3:EE": "PS4",
+    "AC:89:95": "PS4", "D4:F7:D5": "PS4", "40:49:0F": "PS4",
+    # Sony PS5
+    "1C:98:C1": "PS5", "5C:84:3C": "PS5", "80:60:B7": "PS5",
+    "9C:37:CB": "PS5", "B4:0A:D8": "PS5", "E8:6E:3A": "PS5",
+    "EC:74:8C": "PS5",
+    # Sony PSP
+    "00:25:E7": "PSP", "00:90:D9": "PSP", "00:1C:B8": "PSP",
+    # Sony PS Vita
+    "00:00:00": "PS Vita",  # placeholder — Vita uses random MACs
+    # Microsoft Xbox (original)
+    "00:50:F2": "Xbox", "08:D4:0C": "Xbox",
+    # Microsoft Xbox 360
+    "00:22:48": "Xbox 360", "30:59:B7": "Xbox 360",
+    "58:82:A8": "Xbox 360", "7C:1E:52": "Xbox 360",
+    # Microsoft Xbox One / Series
+    "28:18:78": "Xbox One", "60:45:CB": "Xbox One",
+    "98:5F:D3": "Xbox One", "C8:3D:D4": "Xbox One",
+    "20:7B:D2": "Xbox One",
+    # Nintendo GameCube / Wii
+    "00:09:BF": "GameCube",
     # Valve Steam Deck
-    "A4:AE:11": "Valve",
+    "A4:AE:11": "Steam Deck",
 }
 
-# Console detection by OUI + context
-CONSOLE_BY_OUI = {
-    "Nintendo": {
-        "detect": ["Switch", "Wii U", "3DS", "Wii"],
-        "default": "Nintendo Switch"
-    },
-    "Sony": {
-        "detect": ["PS4", "PS5", "PS3", "PSP", "PS Vita"],
-        "default": "PlayStation"
-    },
-    "Microsoft": {
-        "detect": ["Xbox One", "Xbox 360", "Xbox Series"],
-        "default": "Xbox"
-    },
-    "Valve": {
-        "default": "Steam Deck"
-    }
+# Platform ID mapping from console type
+CONSOLE_PLATFORM = {
+    "Nintendo Switch": "switch",
+    "PS2":  "ps2",
+    "PS3":  "ps3",
+    "PS4":  "ps3",   # PS4 uses PS3 relay protocol
+    "PS5":  "ps3",   # PS5 uses PS3 relay protocol
+    "PSP":  "psp",
+    "PS Vita": "vita",
+    "Xbox": "xbox",
+    "Xbox 360": "xbox360",
+    "Xbox One": "xboxone",
+    "GameCube": "gamecube",
+    "Wii": "wii",
+    "Steam Deck": "pc",
 }
 
 
@@ -81,6 +89,7 @@ class DetectedDevice:
     ip: str
     manufacturer: str = "Unknown"
     console_type: str = "Unknown"
+    platform: str = ""
     hostname: str = ""
     custom_name: str = ""
     nm_user: str = ""
@@ -89,25 +98,31 @@ class DetectedDevice:
 
 
 def get_oui(mac: str) -> str:
-    """Extract OUI (first 3 bytes) from MAC address."""
     parts = mac.upper().replace("-", ":").split(":")
     if len(parts) < 3:
         return ""
     return ":".join(parts[:3])
 
 
-def identify_device(mac: str) -> tuple[str, str]:
-    """Returns (manufacturer, console_type) from MAC OUI."""
+def identify_device(mac: str) -> tuple:
     oui = get_oui(mac)
-    manufacturer = OUI_MAP.get(oui, "Unknown")
-    if manufacturer == "Unknown":
-        return manufacturer, "Unknown"
-    info = CONSOLE_BY_OUI.get(manufacturer, {})
-    return manufacturer, info.get("default", "Unknown")
+    console_type = OUI_MAP.get(oui, "Unknown")
+    if console_type == "Unknown":
+        return "Unknown", "Unknown", ""
+    plat = CONSOLE_PLATFORM.get(console_type, "")
+    # Manufacturer from console type
+    if console_type.startswith("PS") or console_type in ("PSP", "PS Vita"):
+        mfr = "Sony"
+    elif console_type in ("Nintendo Switch", "GameCube", "Wii"):
+        mfr = "Nintendo"
+    elif "Xbox" in console_type:
+        mfr = "Microsoft"
+    else:
+        mfr = "Unknown"
+    return mfr, console_type, plat
 
 
-def get_arp_table() -> list[dict]:
-    """Parse ARP table to find devices on local network."""
+def get_arp_table() -> list:
     devices = []
     try:
         if platform.system() == "Windows":
@@ -120,60 +135,52 @@ def get_arp_table() -> list[dict]:
         for match in re.finditer(pattern, output):
             ip = match.group(1)
             mac = match.group(2).replace("-", ":").upper()
-            manufacturer, console_type = identify_device(mac)
+            mfr, console_type, plat = identify_device(mac)
             devices.append({
                 "ip": ip,
                 "mac": mac,
-                "manufacturer": manufacturer,
-                "console_type": console_type
+                "manufacturer": mfr,
+                "console_type": console_type,
+                "platform": plat
             })
     except Exception as e:
         print(f"[Network] ARP scan error: {e}")
     return devices
 
 
+def _ping_one(ip: str):
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+        if platform.system() == "Windows":
+            subprocess.run(["ping", "-n", "1", "-w", "300", ip],
+                           capture_output=True, timeout=1, creationflags=flags)
+        else:
+            subprocess.run(["ping", "-c", "1", "-W", "1", ip],
+                           capture_output=True, timeout=1)
+    except Exception:
+        pass
+
+
 def ping_subnet(base_ip: str, count: int = 254):
-    """Ping entire subnet to populate ARP table."""
+    """Parallel ping of subnet using ThreadPoolExecutor for speed."""
     parts = base_ip.split(".")
     if len(parts) < 3:
         return
     subnet = ".".join(parts[:3])
-
-    def _ping(ip):
-        try:
-            if platform.system() == "Windows":
-                subprocess.run(["ping", "-n", "1", "-w", "200", ip],
-                               capture_output=True, timeout=1, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            else:
-                subprocess.run(["ping", "-c", "1", "-W", "1", ip],
-                               capture_output=True, timeout=1, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-        except Exception:
-            pass
-
-    threads = []
-    for i in range(1, count + 1):
-        ip = f"{subnet}.{i}"
-        t = threading.Thread(target=_ping, args=(ip,), daemon=True)
-        t.start()
-        threads.append(t)
-
-    for t in threads:
-        t.join(timeout=2)
+    ips = [f"{subnet}.{i}" for i in range(1, count + 1)]
+    with ThreadPoolExecutor(max_workers=64) as executor:
+        executor.map(_ping_one, ips)
 
 
 def get_local_ip() -> str:
-    """Get local LAN IP - prefer 192.168.x.x or 10.x.x.x"""
-    import socket, ipaddress
-    candidates = []
+    import ipaddress
     try:
         for iface_ip in socket.gethostbyname_ex(socket.gethostname())[2]:
             if iface_ip.startswith("192.168."):
                 return iface_ip
             ip = ipaddress.ip_address(iface_ip)
             if not ip.is_loopback and not iface_ip.startswith("100.") and not iface_ip.startswith("172."):
-                candidates.append(iface_ip)
-        if candidates:
-            return candidates[0]
+                pass
     except Exception:
         pass
     try:
@@ -181,80 +188,80 @@ def get_local_ip() -> str:
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
+        if ip.startswith("192.168."):
+            return ip
     except Exception:
-        return "192.168.1.1"
+        pass
+    return "192.168.1.1"
 
 
-def scan_network(callback=None) -> list[DetectedDevice]:
-    """
-    Full network scan:
-    1. Get local IP
-    2. Ping subnet to populate ARP
-    3. Parse ARP table
-    4. Identify consoles by MAC OUI
-    """
+def scan_network(callback=None) -> list:
     local_ip = get_local_ip()
     print(f"[Network] Local IP: {local_ip}, scanning subnet...")
-
     ping_subnet(local_ip)
-
     raw = get_arp_table()
     devices = []
-
     for d in raw:
         device = DetectedDevice(
             mac=d["mac"],
             ip=d["ip"],
             manufacturer=d["manufacturer"],
-            console_type=d["console_type"]
+            console_type=d["console_type"],
+            platform=d.get("platform", "")
         )
-        # Try reverse DNS
         try:
             device.hostname = socket.gethostbyaddr(d["ip"])[0]
         except Exception:
             pass
-
         devices.append(device)
         if callback:
             callback(device)
-
-    print(f"[Network] Found {len(devices)} devices ({sum(1 for d in devices if d.manufacturer != 'Unknown')} consoles)")
+    consoles = sum(1 for d in devices if d.console_type != "Unknown")
+    print(f"[Network] Found {len(devices)} devices ({consoles} consoles)")
     return devices
 
 
-# Known emulator process names
 EMULATOR_PROCESSES = {
-    "dolphin.exe":    ("Dolphin",  "gamecube"),
-    "dolphin-emu":    ("Dolphin",  "gamecube"),
-    "pcsx2.exe":      ("PCSX2",    "ps2"),
-    "pcsx2-qt.exe":   ("PCSX2",    "ps2"),
-    "rpcs3.exe":      ("RPCS3",    "ps3"),
-    "xemu.exe":       ("Xemu",     "xbox"),
-    "xenia.exe":      ("Xenia",    "xbox360"),
-    "xenia_canary.exe":("Xenia",   "xbox360"),
-    "ryujinx.exe":    ("Ryujinx",  "switch"),
-    "ryujinx":        ("Ryujinx",  "switch"),
-    "ppsspp.exe":     ("PPSSPP",   "psp"),
-    "ppsspp":         ("PPSSPP",   "psp"),
-    "vita3k.exe":     ("Vita3k",   "vita"),
+    "dolphin.exe":     ("Dolphin",  "gamecube"),
+    "dolphin-emu":     ("Dolphin",  "gamecube"),
+    "pcsx2.exe":       ("PCSX2",    "ps2"),
+    "pcsx2-qt.exe":    ("PCSX2",    "ps2"),
+    "rpcs3.exe":       ("RPCS3",    "ps3"),
+    "xemu.exe":        ("Xemu",     "xbox"),
+    "xenia.exe":       ("Xenia",    "xbox360"),
+    "xenia_canary.exe":("Xenia",    "xbox360"),
+    "ryujinx.exe":     ("Ryujinx",  "switch"),
+    "ryujinx":         ("Ryujinx",  "switch"),
+    "ppsspp.exe":      ("PPSSPP",   "psp"),
+    "ppsspp":          ("PPSSPP",   "psp"),
+    "vita3k.exe":      ("Vita3k",   "vita"),
+    "vita3k":          ("Vita3k",   "vita"),
+    "pcsx2":           ("PCSX2",    "ps2"),
+    "rpcs3":           ("RPCS3",    "ps3"),
 }
 
 
-def detect_emulators() -> list[dict]:
-    """Detect running emulators by process name."""
+def detect_emulators() -> list:
     found = []
     try:
         if platform.system() == "Windows":
             output = subprocess.check_output("tasklist /fo csv /nh", shell=True).decode("utf-8", errors="ignore")
             running = [line.split(",")[0].strip('"').lower() for line in output.splitlines()]
         else:
-            output = subprocess.check_output(["ps", "-e", "-o", "comm="], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+            output = subprocess.check_output(["ps", "-e", "-o", "comm="],
+                stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
             running = [line.strip().lower() for line in output.splitlines()]
 
         for proc, (name, platform_id) in EMULATOR_PROCESSES.items():
             if proc.lower() in running:
-                found.append({"name": name, "platform": platform_id, "process": proc})
+                found.append({
+                    "ip": "127.0.0.1",
+                    "mac": "00:00:00:00:00:00",
+                    "manufacturer": name,
+                    "console_type": name,
+                    "platform": platform_id,
+                    "is_emulator": True
+                })
     except Exception as e:
         print(f"[Network] Emulator detection error: {e}")
     return found
