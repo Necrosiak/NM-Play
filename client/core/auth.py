@@ -10,7 +10,7 @@ import urllib.parse
 import hashlib
 import os
 
-NM_AUTH_URL = "https://networkmemories.com/api/auth"
+from core.config import AUTH_URL as NM_AUTH_URL
 TOKEN_FILE  = os.path.join(os.path.expanduser("~"), ".nmplay_token")
 
 
@@ -52,7 +52,7 @@ class NMAuth:
             pw_hash = hashlib.sha256(password.encode()).hexdigest()
             body = json.dumps({"username": username, "password": pw_hash}).encode()
             req = urllib.request.Request(
-                f"{NM_AUTH_URL}/login",
+                f"{NM_AUTH_URL}/api/nmplay/login",
                 data=body,
                 headers={"Content-Type": "application/json"},
                 method="POST"
@@ -89,7 +89,7 @@ class NMAuth:
             return False
         try:
             req = urllib.request.Request(
-                f"{NM_AUTH_URL}/validate",
+                f"{NM_AUTH_URL}/api/nmplay/validate",
                 headers={"Authorization": f"Bearer {self.token}"},
                 method="GET"
             )
