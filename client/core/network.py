@@ -143,10 +143,10 @@ def ping_subnet(base_ip: str, count: int = 254):
         try:
             if platform.system() == "Windows":
                 subprocess.run(["ping", "-n", "1", "-w", "200", ip],
-                               capture_output=True, timeout=1)
+                               capture_output=True, timeout=1, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
             else:
                 subprocess.run(["ping", "-c", "1", "-W", "1", ip],
-                               capture_output=True, timeout=1)
+                               capture_output=True, timeout=1, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
         except Exception:
             pass
 
@@ -162,7 +162,20 @@ def ping_subnet(base_ip: str, count: int = 254):
 
 
 def get_local_ip() -> str:
-    """Get local machine IP address."""
+    """Get local LAN IP - prefer 192.168.x.x or 10.x.x.x"""
+    import socket, ipaddress
+    candidates = []
+    try:
+        for iface_ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if iface_ip.startswith("192.168."):
+                return iface_ip
+            ip = ipaddress.ip_address(iface_ip)
+            if not ip.is_loopback and not iface_ip.startswith("100.") and not iface_ip.startswith("172."):
+                candidates.append(iface_ip)
+        if candidates:
+            return candidates[0]
+    except Exception:
+        pass
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -170,7 +183,7 @@ def get_local_ip() -> str:
         s.close()
         return ip
     except Exception:
-        return "127.0.0.1"
+        return "192.168.1.1"
 
 
 def scan_network(callback=None) -> list[DetectedDevice]:

@@ -1,17 +1,23 @@
-﻿"""
-NM-Play — NM.com Authentication
-Login with NetworkMemories account.
+"""
+NM-Play — Auth via OAuth-style browser login
+Le client ouvre le navigateur → user se connecte sur NM → token retourné via nmplay://
 """
 
 import json
+import os
+import threading
+import webbrowser
 import urllib.request
 import urllib.error
 import urllib.parse
-import hashlib
-import os
+import http.server
+import socket
+from core.config import AUTH_URL
 
-from core.config import AUTH_URL as NM_AUTH_URL
-TOKEN_FILE  = os.path.join(os.path.expanduser("~"), ".nmplay_token")
+TOKEN_FILE = os.path.join(os.path.expanduser("~"), ".nmplay_token")
+NM_AUTH_PAGE = f"{AUTH_URL}/auth/nmplay"
+NM_VALIDATE  = f"{AUTH_URL}/api/nmplay/validate"
+NM_TOKEN_API = f"{AUTH_URL}/api/nmplay/token"
 
 
 class NMAuth:
@@ -46,31 +52,76 @@ class NMAuth:
         except Exception:
             pass
 
-    def login(self, username: str, password: str) -> tuple[bool, str]:
-        """Login with NM credentials. Returns (success, message)."""
-        try:
-            pw_hash = hashlib.sha256(password.encode()).hexdigest()
-            body = json.dumps({"username": username, "password": pw_hash}).encode()
-            req = urllib.request.Request(
-                f"{NM_AUTH_URL}/api/nmplay/login",
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-                self.token    = data.get("token")
-                self.username = data.get("username", username)
-                self.user_id  = data.get("user_id")
-                self.avatar   = data.get("avatar")
-                self._save_token()
-                return True, f"Welcome, {self.username}!"
-        except urllib.error.HTTPError as e:
-            if e.code == 401:
-                return False, "Invalid username or password."
-            return False, f"Server error ({e.code})"
-        except Exception as e:
-            return False, f"Connection error: {e}"
+    def login_browser(self, callback=None) -> bool:
+        """
+        Ouvre le navigateur vers NM auth page.
+        Lance un serveur local temporaire pour capturer le callback nmplay://
+        """
+        received = {"token": None, "username": None}
+
+        class CallbackHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                received["token"]    = params.get("token", [None])[0]
+                received["username"] = params.get("username", [None])[0]
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"""<html><body style="background:#0f0f1a;color:#eaeaea;font-family:sans-serif;text-align:center;padding:60px">
+                <h2 style="color:#e94560">NM-Play</h2>
+                <p>Connexion reussie ! Vous pouvez fermer cette fenetre.</p>
+                <script>window.close();</script></body></html>""")
+            def log_message(self, *args):
+                pass
+
+        # Trouver un port libre
+        s = socket.socket()
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+        s.close()
+
+        server = http.server.HTTPServer(("localhost", port), CallbackHandler)
+
+        def _serve():
+            server.handle_request()
+
+        t = threading.Thread(target=_serve, daemon=True)
+        t.start()
+
+        # Ouvrir le navigateur avec callback vers localhost
+        auth_url = f"{NM_AUTH_PAGE}?callback=http://localhost:{port}"
+        webbrowser.open(auth_url)
+
+        t.join(timeout=120)  # 2 minutes max
+
+        if received["token"]:
+            # Echanger le one-time token contre un token permanent
+            try:
+                body = json.dumps({"token": received["token"]}).encode()
+                req  = urllib.request.Request(
+                    NM_TOKEN_API,
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read())
+                    self.token    = data.get("token")
+                    self.username = data.get("username", received["username"])
+                    self.user_id  = data.get("user_id")
+                    self.avatar   = data.get("avatar")
+                    self._save_token()
+                    if callback:
+                        callback(True, f"Connecte en tant que {self.username}")
+                    return True
+            except Exception as e:
+                if callback:
+                    callback(False, f"Erreur: {e}")
+                return False
+
+        if callback:
+            callback(False, "Connexion annulee ou timeout.")
+        return False
 
     def logout(self):
         self.token = self.username = self.user_id = self.avatar = None
@@ -84,17 +135,19 @@ class NMAuth:
         return self.token is not None
 
     def validate_token(self) -> bool:
-        """Validate stored token against NM server."""
         if not self.token:
             return False
         try:
             req = urllib.request.Request(
-                f"{NM_AUTH_URL}/api/nmplay/validate",
+                NM_VALIDATE,
                 headers={"Authorization": f"Bearer {self.token}"},
                 method="GET"
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
+                if data.get("token"):
+                    self.token = data["token"]
+                    self._save_token()
                 return data.get("valid", False)
         except Exception:
             return False

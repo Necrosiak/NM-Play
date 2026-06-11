@@ -392,63 +392,20 @@ class NMPlay(tk.Tk):
     # ── Auth ─────────────────────────────────────────────────────────
 
     def _show_login(self):
-        win = tk.Toplevel(self)
-        win.title("Connexion NM")
-        win.geometry("340x220")
-        win.configure(bg=BG_DARK)
-        win.resizable(False, False)
-        win.grab_set()
-
-        tk.Label(win, text="NetworkMemories",
-                 font=("Segoe UI", 14, "bold"),
-                 bg=BG_DARK, fg=ACCENT).pack(pady=(16, 2))
-        tk.Label(win, text="Connecte-toi avec ton compte NM",
-                 font=("Segoe UI", 8), bg=BG_DARK, fg=TEXT_DIM).pack()
-
-        form = tk.Frame(win, bg=BG_DARK, padx=24)
-        form.pack(fill="x", pady=12)
-
-        tk.Label(form, text="Identifiant", font=("Segoe UI", 8),
-                 bg=BG_DARK, fg=TEXT_DIM, anchor="w").pack(fill="x")
-        entry_user = tk.Entry(form, font=("Segoe UI", 10),
-                               bg=BG_CARD, fg=TEXT, insertbackground=TEXT,
-                               relief="flat", bd=4)
-        entry_user.pack(fill="x", pady=(0, 6))
-        if self.auth.username:
-            entry_user.insert(0, self.auth.username)
-
-        tk.Label(form, text="Mot de passe", font=("Segoe UI", 8),
-                 bg=BG_DARK, fg=TEXT_DIM, anchor="w").pack(fill="x")
-        entry_pass = tk.Entry(form, font=("Segoe UI", 10), show="*",
-                               bg=BG_CARD, fg=TEXT, insertbackground=TEXT,
-                               relief="flat", bd=4)
-        entry_pass.pack(fill="x", pady=(0, 8))
-
-        lbl_msg = tk.Label(form, text="", font=("Segoe UI", 8),
-                            bg=BG_DARK, fg=RED)
-        lbl_msg.pack()
-
-        def _login():
-            u = entry_user.get().strip()
-            p = entry_pass.get().strip()
-            if not u or not p:
-                lbl_msg.configure(text="Identifiant et mot de passe requis.")
-                return
-            ok, msg = self.auth.login(u, p)
+        def _on_login_result(ok, msg):
             if ok:
-                win.destroy()
-                self._update_user_display()
-                self._log(f"Connecté en tant que {self.auth.username}")
+                self.after(0, self._update_user_display)
+                self.after(0, lambda: self._log(f"Connecte en tant que {self.auth.username}"))
             else:
-                lbl_msg.configure(text=msg)
+                self.after(0, lambda: self._log(f"Erreur login: {msg}"))
 
-        tk.Button(form, text="Se connecter",
-                  font=("Segoe UI", 9, "bold"),
-                  bg=ACCENT, fg="white", relief="flat",
-                  padx=12, pady=6, cursor="hand2",
-                  command=_login).pack(fill="x")
-
-        entry_pass.bind("<Return>", lambda e: _login())
+        self._log("Ouverture du navigateur pour connexion NM...")
+        import threading
+        threading.Thread(
+            target=self.auth.login_browser,
+            args=(_on_login_result,),
+            daemon=True
+        ).start()
 
     def _update_user_display(self):
         if self.auth.is_logged_in():
