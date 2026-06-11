@@ -8,8 +8,7 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
-NM_SERVER = "networkmemories.com"
-API_BASE  = f"http://{NM_SERVER}:8080"
+from core.config import API_BASE
 
 
 def _request(method: str, path: str, data: dict = None, token: str = None) -> Optional[dict]:

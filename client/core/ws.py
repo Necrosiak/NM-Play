@@ -13,7 +13,7 @@ try:
 except ImportError:
     WS_AVAILABLE = False
 
-NM_WS = "ws://networkmemories.com:8080/ws"
+from core.config import WS_URL as NM_WS
 
 
 class NMWebSocket:

@@ -9,8 +9,7 @@ import platform
 import subprocess
 import threading
 
-RELAY_HOST = "networkmemories.com"
-RELAY_PORT = 11451
+from core.config import RELAY_HOST, RELAY_PORT
 
 BIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin")
 
