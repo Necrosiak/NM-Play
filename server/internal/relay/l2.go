@@ -43,7 +43,7 @@ key := remoteAddr.String()
 platform := r.platformFromByte(data[0])
 client, exists := r.clients[key]
 if !exists {
-client = NewClient(platform, remoteAddr, net.IP(data[1:7]))
+client = NewRelayClient(platform, remoteAddr, net.IP(data[1:7]))
 r.clients[key] = client
 r.hub.Register(client)
 go r.sendLoop(client)

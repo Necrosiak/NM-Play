@@ -51,7 +51,7 @@ var lanIP net.IP
 if len(data) >= 5 {
 lanIP = net.IP(data[1:5])
 }
-client = NewClient(PlatformSwitch, remoteAddr, lanIP)
+client = NewRelayClient(PlatformSwitch, remoteAddr, lanIP)
 r.clients[key] = client
 r.hub.Register(client)
 go r.sendLoop(client)

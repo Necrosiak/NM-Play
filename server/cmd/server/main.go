@@ -25,7 +25,11 @@ go l2.Run()
 psp := relay.NewPSPRelay(":27312", hub)
 go psp.Run()
 
-srv := api.NewServer(":8080", hub)
+authURL := os.Getenv("NM_AUTH_URL")
+if authURL == "" {
+authURL = "https://network-memories.com"
+}
+srv := api.NewServer(":8080", hub, authURL)
 go srv.Run()
 
 log.Println("NM-Play Server running:")

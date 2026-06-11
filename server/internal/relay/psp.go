@@ -35,7 +35,7 @@ go r.handleConn(conn)
 func (r *PSPRelay) handleConn(conn net.Conn) {
 remoteAddr := conn.RemoteAddr().(*net.TCPAddr)
 udpAddr := &net.UDPAddr{IP: remoteAddr.IP, Port: remoteAddr.Port}
-client := NewClient(PlatformPSP, udpAddr, nil)
+client := NewRelayClient(PlatformPSP, udpAddr, nil)
 client.TCPConn = conn
 r.hub.Register(client)
 log.Printf("[PSP] New client: %s", remoteAddr)
