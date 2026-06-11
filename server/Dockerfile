@@ -1,9 +1,9 @@
-﻿FROM golang:1.21-alpine AS builder
+FROM golang:1.21-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
-RUN go mod download
+RUN go mod tidy
 COPY . .
-RUN go build -o nm-play-server ./cmd/server
+RUN go mod tidy && go build -o nm-play-server ./cmd/server
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates

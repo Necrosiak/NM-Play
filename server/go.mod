@@ -1,4 +1,4 @@
-﻿module github.com/networkmemories/nm-play-server
+module github.com/networkmemories/nm-play-server
 
 go 1.21
 
