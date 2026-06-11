@@ -24,7 +24,7 @@ PlatformXboxOne  = "xboxone"
 PlatformSwitch2  = "switch2"
 
 HeartbeatInterval = 30 * time.Second
-HeartbeatTimeout  = 90 * time.Second
+HeartbeatTimeout  = 30 * time.Second
 )
 
 // Client represents a connected player
