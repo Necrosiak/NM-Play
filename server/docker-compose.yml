@@ -1,0 +1,19 @@
+﻿services:
+  nm-play-server:
+    build: .
+    container_name: nm-play-server
+    restart: unless-stopped
+    ports:
+      - "11451:11451/udp"
+      - "11451:11451/tcp"
+      - "11452:11452/udp"
+      - "27312:27312/tcp"
+      - "8080:8080/tcp"
+    env_file:
+      - .env
+    networks:
+      - nm-play
+
+networks:
+  nm-play:
+    driver: bridge
