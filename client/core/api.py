@@ -1,54 +1,76 @@
-﻿"""
-NM-Play — API Client
-Communicates with the NM-Play relay server REST API.
 """
-
-import json
+NM-Play API client
+"""
 import urllib.request
 import urllib.error
-from typing import Optional
-
+import json
 from core.config import API_BASE
 
+class NMPlayAPI:
+    def __init__(self, base_url=API_BASE):
+        self.base = base_url
 
-def _request(method: str, path: str, data: dict = None, token: str = None) -> Optional[dict]:
-    url = f"{API_BASE}{path}"
-    body = json.dumps(data).encode() if data else None
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    try:
-        req = urllib.request.Request(url, data=body, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        print(f"[API] HTTP {e.code}: {path}")
-        return None
-    except Exception as e:
-        print(f"[API] Error {path}: {e}")
-        return None
+    def _get(self, path, token=None):
+        req = urllib.request.Request(f"{self.base}{path}")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.loads(r.read())
+        except Exception as e:
+            print(f"[API] Error {path}: {e}")
+            return None
 
+    def _post(self, path, data=None, token=None):
+        body = json.dumps(data or {}).encode()
+        req = urllib.request.Request(
+            f"{self.base}{path}", data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            try:
+                return json.loads(e.read())
+            except Exception:
+                return {"error": str(e)}
+        except Exception as e:
+            print(f"[API] Error {path}: {e}")
+            return None
 
-def get_health() -> bool:
-    r = _request("GET", "/health")
-    return r is not None and r.get("status") == "ok"
+    def health(self):
+        return self._get("/health")
 
-def get_stats() -> dict:
-    return _request("GET", "/stats") or {}
+    def stats(self):
+        return self._get("/stats")
 
-def get_lobbies(platform: str = "") -> list:
-    path = "/lobbies"
-    if platform:
-        path += f"?platform={platform}"
-    return _request("GET", path) or []
+    def get_lobbies(self, platform=""):
+        path = f"/lobbies?platform={platform}" if platform else "/lobbies"
+        return self._get(path) or []
 
-def create_lobby(name: str, game: str, platform: str, username: str, max_players: int = 8) -> Optional[dict]:
-    return _request("POST", "/lobbies", {
-        "name": name, "game": game, "platform": platform,
-        "username": username, "max_players": max_players
-    })
+    def connect(self, platform, token, lan_ip=""):
+        return self._post("/connect", {"platform": platform, "lan_ip": lan_ip}, token)
 
-def join_lobby(lobby_id: str, username: str, platform: str) -> Optional[dict]:
-    return _request("POST", f"/lobbies/{lobby_id}/join", {
-        "username": username, "platform": platform
-    })
+    def disconnect(self, token):
+        return self._post("/disconnect", {}, token)
+
+    def heartbeat(self, token):
+        return self._post("/heartbeat", {}, token)
+
+    def create_lobby(self, name, platform, game="", password="", max_players=8, token=None, username=""):
+        return self._post("/lobbies", {
+            "name": name, "platform": platform,
+            "game": game, "password": password,
+            "maxPlayers": max_players,
+            "username": username
+        }, token)
+
+    def join_lobby(self, lobby_id, password="", token=None, username=""):
+        return self._post(f"/lobbies/{lobby_id}/join", {"password": password, "username": username}, token)
+
+    def leave_lobby(self, token):
+        # Need lobby_id - get from server
+        return self._post("/lobbies/current/leave", {}, token)
