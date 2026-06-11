@@ -70,6 +70,8 @@ class NMPlay(tk.Tk):
         self.lobbies  = []
         self.devices  = []
         self.current_lobby = None
+        self.selected_devices = []
+        self.selected_devices = []  # List of selected devices
         self.show_logs = False
         self._heartbeat_thread = None
 
@@ -398,7 +400,22 @@ class NMPlay(tk.Tk):
         tk.Label(card, text=f"{len(players)}/{max_p}",
             font=(FONT, 10, "bold"), bg=BG_ITEM, fg=count_color).pack(side="right")
 
-        # Click to join
+        # Bouton rejoindre/quitter
+        lid = lobby.get("id")
+        is_mine = self.current_lobby and self.current_lobby.get("id") == lid
+        in_lobby = self.current_lobby is not None
+        if is_mine:
+            tk.Button(card, text="Quitter",
+                font=(FONT, 8, "bold"), bg=RED, fg="white",
+                relief="flat", padx=8, pady=3, cursor="hand2",
+                command=self._leave_lobby).pack(side="right", padx=(8,0))
+        elif not in_lobby:
+            tk.Button(card, text="Rejoindre",
+                font=(FONT, 8, "bold"), bg=GREEN, fg="white",
+                relief="flat", padx=8, pady=3, cursor="hand2",
+                command=lambda lid=lid, priv=is_priv: self._join_lobby(lid, priv)).pack(side="right", padx=(8,0))
+
+        # Double-clic aussi
         card.bind("<Double-Button-1>",
             lambda e, lid=lobby.get("id"), priv=is_priv: self._join_lobby(lid, priv))
         for w in card.winfo_children():
@@ -473,8 +490,8 @@ class NMPlay(tk.Tk):
                     token=self.auth.token,
                     username=self.auth.username or "Joueur"
                 )
-                if result and result.get("ok"):
-                    self.current_lobby = result.get("lobby")
+                if result and not result.get("error"):
+                    self.current_lobby = result.get("lobby") or result if result.get("id") or (result.get("lobby") and result["lobby"].get("id")) else None
                     self._log(f"Lobby créé : {name}")
                     self.after(0, self._show_current_lobby)
                     self.after(0, self._refresh_lobbies)
@@ -490,6 +507,8 @@ class NMPlay(tk.Tk):
             command=_do_create).pack(pady=16)
 
     def _join_lobby(self, lobby_id, is_private=False):
+        # Ensure connected
+        self._connect_to_server()
         if not self.auth.is_logged_in():
             messagebox.showwarning("Connexion requise", "Connecte-toi pour rejoindre un lobby.")
             self._show_login()
@@ -523,7 +542,6 @@ class NMPlay(tk.Tk):
     def _leave_lobby(self):
         def _do():
             self.api.leave_lobby(self.auth.token)
-            self.current_lobby = None
             self._log("Lobby quitté")
             self.after(0, self._hide_current_lobby)
             self.after(0, self._refresh_lobbies)
@@ -570,7 +588,8 @@ class NMPlay(tk.Tk):
     # ── Devices ──────────────────────────────────────────────────────────────
 
     def _scan_network(self):
-        self._log("Scan réseau en cours...")
+        self.after(0, lambda: self._show_scanning())
+        self._log("Scan reseau en cours...")
         devs = scan_network()
         emus = detect_emulators()
         # Normalize to dicts
@@ -582,6 +601,12 @@ class NMPlay(tk.Tk):
         self.after(0, self._render_devices)
         self._log(f"Scan terminé: {len(devs)} appareils, {len(emus)} émulateurs")
 
+    def _show_scanning(self):
+        for w in self.device_list.winfo_children():
+            w.destroy()
+        tk.Label(self.device_list, text="⟳ Scan en cours...",
+            font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM, pady=8).pack()
+
     def _render_devices(self):
         for w in self.device_list.winfo_children():
             w.destroy()
@@ -590,6 +615,14 @@ class NMPlay(tk.Tk):
             tk.Label(self.device_list, text="Aucun appareil",
                 font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM, pady=8).pack()
             return
+
+        # Selected devices counter
+        sel_frame = tk.Frame(self.device_list, bg=BG_CARD)
+        sel_frame.pack(fill="x", pady=(0,4))
+        self.lbl_selected = tk.Label(sel_frame,
+            text="Aucune console sélectionnée",
+            font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM)
+        self.lbl_selected.pack(side="left")
 
         self._device_rows = []
         for dev in self.devices[:12]:
@@ -613,19 +646,27 @@ class NMPlay(tk.Tk):
             # Click to select
             def make_select(d=dev, r=row, ln=lbl_name, li=lbl_ip, p=plat):
                 def _select(e=None):
-                    # Reset all rows
-                    for rr, ll1, ll2 in self._device_rows:
-                        rr.configure(bg=BG_ITEM)
-                        ll1.configure(bg=BG_ITEM)
-                        ll2.configure(bg=BG_ITEM)
-                    # Highlight selected
-                    r.configure(bg=BG_SEL)
-                    ln.configure(bg=BG_SEL, fg=ACCENT)
-                    li.configure(bg=BG_SEL)
-                    # Switch platform
-                    if p:
-                        self._select_platform(p)
-                    ct_key = "console_type"; ip_key = "ip"; self._log(f"Console selectionnee: {d.get(ct_key, chr(63))} @ {d.get(ip_key, chr(63))}")
+                    # Toggle selection
+                    if d in self.selected_devices:
+                        self.selected_devices.remove(d)
+                        r.configure(bg=BG_ITEM)
+                        ln.configure(bg=BG_ITEM, fg=TEXT if d.get("console_type","Unknown") != "Unknown" else TEXT_DIM)
+                        li.configure(bg=BG_ITEM)
+                    else:
+                        self.selected_devices.append(d)
+                        r.configure(bg=BG_SEL)
+                        ln.configure(bg=BG_SEL, fg=GREEN)
+                        li.configure(bg=BG_SEL)
+                        if p:
+                            self._select_platform(p)
+                    # Update counter
+                    n = len(self.selected_devices)
+                    if n == 0:
+                        self.lbl_selected.configure(text="Aucune console selectionnee", fg=TEXT_DIM)
+                    elif n == 1:
+                        self.lbl_selected.configure(text="1 console selectionnee", fg=GREEN)
+                    else:
+                        self.lbl_selected.configure(text=f"{n} consoles selectionnees", fg=GREEN)
                 return _select
 
             fn = make_select()
@@ -723,13 +764,14 @@ class NMPlay(tk.Tk):
         self._log("Déconnecté")
 
     def _connect_to_server(self):
-        """Register with NM-Play server after login"""
-        if not self.auth.token:
+        """Register with NM-Play server after login - only once"""
+        if not self.auth.token or getattr(self, "_server_connected", False):
             return
         def _do():
             result = self.api.connect(self.platform, self.auth.token)
             if result and result.get("ok"):
-                self._log(f"Connecté au serveur NM-Play")
+                self._server_connected = True
+                self._log(f"Connecte au serveur NM-Play")
                 self._start_heartbeat()
             else:
                 self._log(f"Erreur connexion serveur")
@@ -751,7 +793,7 @@ class NMPlay(tk.Tk):
                     self.api.heartbeat(self.auth.token)
             except Exception:
                 pass
-            time.sleep(25)
+            time.sleep(8)
 
     # ── Server check ──────────────────────────────────────────────────────────
 
