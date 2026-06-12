@@ -494,14 +494,28 @@ class NMPlay(tk.Tk):
             dialog.destroy()
 
             def _create():
+                # Number of selected consoles
+                n_consoles = max(1, len(self.selected_devices))
+                username = self.auth.username or "Joueur"
                 result = self.api.create_lobby(
                     name=name, platform=plat, game=game,
                     password=pw, max_players=maxp,
                     token=self.auth.token,
-                    username=self.auth.username or "Joueur"
+                    username=f"{username}#1" if n_consoles > 1 else username
                 )
                 if result and not result.get("error"):
                     self.current_lobby = result.get("lobby") or result if result.get("id") or (result.get("lobby") and result["lobby"].get("id")) else None
+                    # Register additional consoles with unique sub-tokens
+                    if n_consoles > 1 and self.current_lobby:
+                        lid = self.current_lobby.get("id","") if self.current_lobby else ""
+                        import hashlib, time
+                        for i in range(1, n_consoles):
+                            dev = self.selected_devices[i] if i < len(self.selected_devices) else {}
+                            dev_plat = dev.get("platform", plat) if isinstance(dev, dict) else getattr(dev, "platform", plat)
+                            # Generate unique sub-token for each console
+                            sub_token = hashlib.sha256(f"{self.auth.token}_{i}_{time.time()}".encode()).hexdigest()
+                            self.api.connect(dev_plat, sub_token, username=f"{username}#{i+1}")
+                            self.api.join_lobby(lid, "", sub_token, username=f"{username}#{i+1}")
                     self._log(f"Lobby créé : {name}")
                     self.after(0, self._show_current_lobby)
                     self.after(0, self._refresh_lobbies)
@@ -607,7 +621,10 @@ class NMPlay(tk.Tk):
             if isinstance(d, dict):
                 return d
             return {k: getattr(d, k, "") for k in ["ip","mac","manufacturer","console_type","type","platform"]}
-        self.devices = [to_dict(d) for d in devs + emus]
+        console_devs = [to_dict(d) for d in devs if (d.console_type if hasattr(d,'console_type') else d.get('console_type','Unknown')) != 'Unknown']
+        other_devs = [to_dict(d) for d in devs if (d.console_type if hasattr(d,'console_type') else d.get('console_type','Unknown')) == 'Unknown']
+        emu_devs = [to_dict(d) for d in emus]
+        self.devices = console_devs + emu_devs + other_devs
         self.after(0, self._render_devices)
         self._log(f"Scan termine: {len(devs)} appareils, {len(emus)} emulateurs")
         # Auto-select first detected console

@@ -202,6 +202,19 @@ def get_local_ip() -> str:
 def scan_network(callback=None) -> list:
     local_ip = get_local_ip()
     print(f"[Network] Local IP: {local_ip}, scanning subnet...")
+    # Pre-ping known console IPs from ARP cache first
+    import subprocess as _sp
+    try:
+        if platform.system() == "Windows":
+            arp_out = _sp.check_output("arp -a", shell=True).decode("utf-8", errors="ignore")
+        else:
+            arp_out = _sp.check_output(["arp", "-a"], stderr=_sp.DEVNULL).decode("utf-8", errors="ignore")
+        import re as _re
+        known_ips = _re.findall(r"(\d+\.\d+\.\d+\.\d+)", arp_out)
+        with ThreadPoolExecutor(max_workers=32) as ex:
+            ex.map(_ping_one, known_ips[:50])
+    except Exception:
+        pass
     ping_subnet(local_ip)
     raw = get_arp_table()
     devices = []
@@ -259,7 +272,7 @@ def detect_emulators() -> list:
         for proc, (name, platform_id) in EMULATOR_PROCESSES.items():
             if proc.lower() in running:
                 found.append({
-                    "ip": "127.0.0.1",
+                    "ip": "EMU",
                     "mac": "00:00:00:00:00:00",
                     "manufacturer": name,
                     "console_type": name,
