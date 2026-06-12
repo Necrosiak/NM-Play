@@ -12,7 +12,7 @@
 4. Launch a LAN-compatible game on PS2
 
 ## Compatible games
-ATV Offroad Fury, Baldurs Gate Dark Alliance, Champions of Norrath, Conflict Desert Storm,
+ATV Offroad Fury, Champions of Norrath, Conflict Desert Storm,
 Dark Cloud 2, Dynasty Warriors, Medal of Honor, Need for Speed Underground, SOCOM series,
 Tekken Tag Tournament, and many more.
 
