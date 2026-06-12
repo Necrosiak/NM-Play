@@ -70,7 +70,6 @@ class NMPlay(tk.Tk):
         self.lobbies  = []
         self.devices  = []
         self.current_lobby = None
-        self.selected_devices = []
         self.selected_devices = []  # List of selected devices
         self.show_logs = False
         self._heartbeat_thread = None
@@ -867,21 +866,33 @@ class NMPlay(tk.Tk):
 
     def _on_close(self):
         self._heartbeat_running = False
-        # Force sync disconnect before closing
         token = getattr(self.auth, "token", None)
         if token:
-            import urllib.request, urllib.error
-            for endpoint in ["/lobbies/current/leave", "/disconnect"]:
-                try:
-                    body = b"{}"
-                    req = urllib.request.Request(
-                        f"{self.api.base}{endpoint}",
-                        data=body,
-                        headers={"Content-Type":"application/json","Authorization":f"Bearer {token}"},
-                        method="POST")
-                    urllib.request.urlopen(req, timeout=2)
-                except Exception:
-                    pass
+            import urllib.request
+            # Leave lobby first if in one
+            if self.current_lobby:
+                lid = self.current_lobby.get("id", "")
+                for endpoint in [f"/lobbies/{lid}/leave", "/lobbies/current/leave"]:
+                    try:
+                        body = b"{}"
+                        req = urllib.request.Request(
+                            f"{self.api.base}{endpoint}", data=body,
+                            headers={"Content-Type":"application/json","Authorization":f"Bearer {token}"},
+                            method="POST")
+                        urllib.request.urlopen(req, timeout=2)
+                        break
+                    except Exception:
+                        pass
+            # Disconnect
+            try:
+                body = b"{}"
+                req = urllib.request.Request(
+                    f"{self.api.base}/disconnect", data=body,
+                    headers={"Content-Type":"application/json","Authorization":f"Bearer {token}"},
+                    method="POST")
+                urllib.request.urlopen(req, timeout=2)
+            except Exception:
+                pass
         if self.relay.running:
             try:
                 self.relay.disconnect()
