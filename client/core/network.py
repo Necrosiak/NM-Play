@@ -131,10 +131,14 @@ def get_arp_table() -> list:
         else:
             output = subprocess.check_output(["arp", "-a"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
             pattern = r"\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+([\da-fA-F:]{17})"
-
         for match in re.finditer(pattern, output):
             ip = match.group(1)
             mac = match.group(2).replace("-", ":").upper()
+            # Filter invalid IPs
+            if (ip.startswith("224.") or ip.startswith("239.") or
+                ip.startswith("255.") or ip.startswith("172.") or
+                ip.endswith(".255") or mac == "FF:FF:FF:FF:FF:FF"):
+                continue
             mfr, console_type, plat = identify_device(mac)
             devices.append({
                 "ip": ip,
@@ -152,11 +156,11 @@ def _ping_one(ip: str):
     try:
         flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
         if platform.system() == "Windows":
-            subprocess.run(["ping", "-n", "1", "-w", "300", ip],
-                           capture_output=True, timeout=1, creationflags=flags)
+            subprocess.run(["ping", "-n", "2", "-w", "500", ip],
+                           capture_output=True, timeout=2, creationflags=flags)
         else:
-            subprocess.run(["ping", "-c", "1", "-W", "1", ip],
-                           capture_output=True, timeout=1)
+            subprocess.run(["ping", "-c", "2", "-W", "1", ip],
+                           capture_output=True, timeout=2)
     except Exception:
         pass
 

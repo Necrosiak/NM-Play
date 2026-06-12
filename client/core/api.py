@@ -51,8 +51,8 @@ class NMPlayAPI:
         path = f"/lobbies?platform={platform}" if platform else "/lobbies"
         return self._get(path) or []
 
-    def connect(self, platform, token, lan_ip=""):
-        return self._post("/connect", {"platform": platform, "lan_ip": lan_ip}, token)
+    def connect(self, platform, token, lan_ip="", username=""):
+        return self._post("/connect", {"platform": platform, "lan_ip": lan_ip, "username": username}, token)
 
     def disconnect(self, token):
         return self._post("/disconnect", {}, token)
@@ -71,6 +71,7 @@ class NMPlayAPI:
     def join_lobby(self, lobby_id, password="", token=None, username=""):
         return self._post(f"/lobbies/{lobby_id}/join", {"password": password, "username": username}, token)
 
-    def leave_lobby(self, token):
-        # Need lobby_id - get from server
+    def leave_lobby(self, token, lobby_id=""):
+        if lobby_id:
+            return self._post(f"/lobbies/{lobby_id}/leave", {}, token)
         return self._post("/lobbies/current/leave", {}, token)

@@ -232,9 +232,15 @@ class NMPlay(tk.Tk):
         right.pack(side="right", fill="y", padx=(6, 0))
         right.pack_propagate(False)
 
-        tk.Label(right, text="Appareils détectés",
-            font=(FONT, 9, "bold"), bg=BG_CARD, fg=TEXT,
-            pady=8).pack()
+        hdr = tk.Frame(right, bg=BG_CARD)
+        hdr.pack(fill="x", pady=(4,0))
+        tk.Label(hdr, text="Appareils détectés",
+            font=(FONT, 9, "bold"), bg=BG_CARD, fg=TEXT).pack(side="left", padx=8)
+        tk.Button(hdr, text="⟳",
+            font=(FONT, 10, "bold"), bg=BG_CARD, fg=TEXT_DIM,
+            relief="flat", padx=6, cursor="hand2",
+            command=lambda: threading.Thread(target=self._scan_network, daemon=True).start()
+        ).pack(side="right", padx=4)
 
         # Scrollable device list
         dev_scroll_frame = tk.Frame(right, bg=BG_CARD)
@@ -457,6 +463,11 @@ class NMPlay(tk.Tk):
         pf.pack(fill="x", padx=20, pady=4)
         tk.Label(pf, text="Plateforme", font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM, width=12, anchor="w").pack(side="left")
         plat_var = tk.StringVar(value=self.platform)
+        # Auto-set from selected device
+        if self.selected_devices:
+            dev = self.selected_devices[0]
+            p = dev.get("platform","") if isinstance(dev,dict) else getattr(dev,"platform","")
+            if p: plat_var.set(p)
         combo = ttk.Combobox(pf, textvariable=plat_var,
             values=[p[0] for p in PLATFORMS], state="readonly", width=16)
         combo.pack(side="left", padx=(4,0))
@@ -599,7 +610,17 @@ class NMPlay(tk.Tk):
             return {k: getattr(d, k, "") for k in ["ip","mac","manufacturer","console_type","type","platform"]}
         self.devices = [to_dict(d) for d in devs + emus]
         self.after(0, self._render_devices)
-        self._log(f"Scan terminé: {len(devs)} appareils, {len(emus)} émulateurs")
+        self._log(f"Scan termine: {len(devs)} appareils, {len(emus)} emulateurs")
+        # Auto-select first detected console
+        for dev in self.devices:
+            ct = dev.get("console_type", "Unknown") if isinstance(dev, dict) else getattr(dev, "console_type", "Unknown")
+            plat = dev.get("platform", "") if isinstance(dev, dict) else getattr(dev, "platform", "")
+            if ct != "Unknown" and plat:
+                if not self.selected_devices:
+                    self.selected_devices.append(dev)
+                    self.after(0, lambda p=plat: self._select_platform(p))
+                    self.after(0, self._render_devices)
+                break
 
     def _show_scanning(self):
         for w in self.device_list.winfo_children():
@@ -767,7 +788,7 @@ class NMPlay(tk.Tk):
         if not self.auth.token or getattr(self, "_server_connected", False):
             return
         def _do():
-            result = self.api.connect(self.platform, self.auth.token)
+            result = self.api.connect(self.platform, self.auth.token, username=self.auth.username or "")
             if result and result.get("ok"):
                 self._server_connected = True
                 self._log(f"Connecte au serveur NM-Play")
