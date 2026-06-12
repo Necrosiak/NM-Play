@@ -224,6 +224,8 @@ class NMPlay(tk.Tk):
         self.lobby_panel = tk.Frame(left, bg=BG_CARD,
             relief="flat", pady=8, padx=10)
         self.lobby_panel.pack(fill="x", pady=4)
+        # Auto-refresh panel every 5s
+        self.after(5000, self._refresh_lobby_panel)
         self.lobby_panel.pack_forget()
 
         # ── Right: devices + relay ───────────────────────────────────
@@ -255,31 +257,37 @@ class NMPlay(tk.Tk):
             lambda e: dev_canvas.configure(scrollregion=dev_canvas.bbox("all")))
 
         # Manual console add
+        sep = tk.Frame(right, bg=BG_SEL, height=1)
+        sep.pack(fill="x", padx=8, pady=(8,4))
+
         tk.Label(right, text="Ajouter manuellement",
-            font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM).pack(pady=(8,2))
+            font=(FONT, 8, "bold"), bg=BG_CARD, fg=TEXT_DIM).pack()
 
-        manual_frame = tk.Frame(right, bg=BG_CARD)
-        manual_frame.pack(fill="x", padx=4)
+        # IP field with label
+        ip_frame = tk.Frame(right, bg=BG_CARD)
+        ip_frame.pack(fill="x", padx=8, pady=2)
+        tk.Label(ip_frame, text="IP :", font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM, width=3).pack(side="left")
+        self.entry_manual_ip = tk.Entry(ip_frame,
+            font=(FONT, 9), bg=BG_ITEM, fg=TEXT,
+            insertbackground=TEXT, relief="flat")
+        self.entry_manual_ip.pack(side="left", fill="x", expand=True, ipady=5)
 
-        self.entry_manual_ip = tk.Entry(manual_frame,
-            font=(FONT, 8), bg=BG_ITEM, fg=TEXT,
-            insertbackground=TEXT, relief="flat", width=14)
-        self.entry_manual_ip.insert(0, "IP de la console")
-        self.entry_manual_ip.pack(side="left", padx=(0,2), ipady=4)
-
-        # Platform dropdown for manual
+        # Platform dropdown
+        plat_frame = tk.Frame(right, bg=BG_CARD)
+        plat_frame.pack(fill="x", padx=8, pady=2)
+        tk.Label(plat_frame, text="Plat :", font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM, width=3).pack(side="left")
         self.manual_platform = tk.StringVar(value="ps2")
         platforms_list = [p[0] for p in PLATFORMS]
-        self.combo_platform = ttk.Combobox(manual_frame,
+        self.combo_platform = ttk.Combobox(plat_frame,
             textvariable=self.manual_platform,
-            values=platforms_list, width=8,
+            values=platforms_list, width=12,
             state="readonly")
-        self.combo_platform.pack(side="left")
+        self.combo_platform.pack(side="left", fill="x", expand=True)
 
-        tk.Button(right, text="+ Ajouter",
-            font=(FONT, 8), bg=BG_CARD, fg=TEXT_DIM,
-            relief="flat", padx=8, pady=3, cursor="hand2",
-            command=self._add_manual_device).pack(pady=4)
+        tk.Button(right, text="+ Ajouter la console",
+            font=(FONT, 8, "bold"), bg=BG_SEL, fg=TEXT,
+            relief="flat", padx=8, pady=5, cursor="hand2",
+            command=self._add_manual_device).pack(fill="x", padx=8, pady=4)
 
         # Relay button
         self.btn_relay = tk.Button(right, text="Connecter au relay",
@@ -391,14 +399,18 @@ class NMPlay(tk.Tk):
         tk.Label(game_row, text=lobby.get("game", ""),
             font=(FONT, 8), bg=BG_ITEM, fg=TEXT_DIM).pack(side="left")
 
-        # Players avatars
-        for p in players[:8]:
-            uname = p.get("username", "?")[:2].upper()
-            lbl = tk.Label(game_row, text=uname,
-                font=(FONT, 7, "bold"),
-                bg=color, fg="white",
-                padx=3, pady=1, relief="flat")
-            lbl.pack(side="left", padx=1)
+        # Players avatars - hide if private lobby
+        if not is_priv:
+            for p in players[:8]:
+                uname = p.get("username", "?")[:2].upper()
+                lbl = tk.Label(game_row, text=uname,
+                    font=(FONT, 7, "bold"),
+                    bg=color, fg="white",
+                    padx=3, pady=1, relief="flat")
+                lbl.pack(side="left", padx=1)
+        else:
+            tk.Label(game_row, text="🔒 confidentiel",
+                font=(FONT, 7), bg=BG_ITEM, fg=TEXT_DIM).pack(side="left")
 
         # Count
         count_color = RED if is_full else GREEN
@@ -611,6 +623,13 @@ class NMPlay(tk.Tk):
                 font=(FONT, 8), bg=BG_CARD, fg=lbl_color).pack(anchor="w")
 
         self.lobby_panel.pack(fill="x", pady=4)
+        # Auto-refresh panel every 5s
+        self.after(5000, self._refresh_lobby_panel)
+
+    def _refresh_lobby_panel(self):
+        if self.current_lobby:
+            self._show_current_lobby()
+            self.after(5000, self._refresh_lobby_panel)
 
     def _hide_current_lobby(self):
         self.lobby_panel.pack_forget()
