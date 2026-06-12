@@ -574,6 +574,12 @@ class NMPlay(tk.Tk):
     def _show_current_lobby(self):
         if not self.current_lobby:
             return
+        # Fetch fresh lobby data from API
+        lid = self.current_lobby.get("id","")
+        if lid:
+            fresh = next((lo for lo in self.api.get_lobbies("") if lo.get("id") == lid), None)
+            if fresh:
+                self.current_lobby = fresh
         for w in self.lobby_panel.winfo_children():
             w.destroy()
 
