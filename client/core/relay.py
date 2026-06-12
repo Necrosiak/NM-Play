@@ -11,7 +11,12 @@ import threading
 
 from core.config import RELAY_HOST, RELAY_PORT
 
-BIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin")
+def _get_base_dir():
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+BIN_DIR = os.path.join(_get_base_dir(), "bin") if not getattr(sys, "frozen", False) else _get_base_dir()
 
 def get_lanplay_bin() -> str:
     if platform.system() == "Windows":
